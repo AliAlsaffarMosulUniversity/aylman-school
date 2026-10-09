@@ -792,7 +792,7 @@ const ACT={
   },
   async activate(){
     const i=$('#actcode');if(!i)return;
-    if(await License.verify(i.value)){S.mode=hasLock()?'locked':'ready';$('#view').innerHTML='';toast('تم التفعيل بنجاح. شكرًا لك');render();const c=document.getElementById('lc-credit');if(c)c.remove();drawCredit()}
+    if(await License.verify(i.value)){S.mode=hasLock()?'locked':'ready';$('#view').innerHTML='';toast('تم التفعيل بنجاح. شكرًا لك');render();drawTrialBar()}
     else{i.value='';i.focus();toast('رمز التفعيل غير صحيح')}
   },
   locknow(){sessSet(null);S.mode='locked';$('#view').innerHTML='';render();window.scrollTo(0,0)},
@@ -953,6 +953,8 @@ const License={
   activated(){const o=this._o||this._read();return !!(o&&o.act===this.HASH)},
   daysUsed(){const o=this._o||this._read();if(!o)return 0;return Math.floor(((o.seen||0)-(o.installed||0))/this.DAY)},
   daysLeft(){return Math.max(0,this.TRIAL_DAYS-this.daysUsed())},
+  end(){const o=this._o||this._read();return (o?(o.installed||0):Date.now())+this.TRIAL_DAYS*this.DAY},
+  msLeft(){let o=this._o||this._read();const now=Date.now();if(!o)return this.TRIAL_DAYS*this.DAY;o.seen=Math.max(Number(o.seen)||now,now);this._write(o);this._o=o;return Math.max(0,(o.installed||0)+this.TRIAL_DAYS*this.DAY-o.seen)},
   locked(){return !this.activated() && this.daysLeft()<=0},
   async verify(code){const h=await hashPw(String(code||'').trim(),this.SALT);
     if(h===this.HASH){const o=this._o||this._read()||{installed:Date.now(),seen:Date.now()};o.act=this.HASH;this._write(o);this._o=o;return true}
@@ -962,9 +964,25 @@ function drawCredit(){
   if(document.getElementById('lc-credit'))return;
   const d=document.createElement('div');d.id='lc-credit';
   d.style.cssText='text-align:center;color:var(--muted);font-size:.8rem;line-height:1.7;padding:16px 10px 22px';
-  const trial=(!License.activated()&&!License.locked())?`<div style="color:var(--amber);font-weight:600;margin-bottom:4px">نسخة تجريبية — باقٍ ${License.daysLeft()} يوم</div>`:'';
-  d.innerHTML=trial+'© Logical Code — جميع الحقوق محفوظة';
+  d.innerHTML='© Logical Code — جميع الحقوق محفوظة';
   document.body.appendChild(d);
+}
+let _lcTick=null;
+function fmtLeft(ms){const h=Math.floor(ms/3600000),m=Math.floor(ms%3600000/60000),sec=Math.floor(ms%60000/1000);const p=n=>String(n).padStart(2,'0');return `${p(h)}:${p(m)}:${p(sec)}`;}
+function drawTrialBar(){
+  let bar=document.getElementById('lc-trialbar');
+  if(License.activated()||License.locked()){if(bar)bar.remove();if(_lcTick){clearInterval(_lcTick);_lcTick=null}return}
+  if(!bar){bar=document.createElement('div');bar.id='lc-trialbar';
+    bar.style.cssText='position:sticky;top:0;z-index:50;background:var(--amber);color:#fff;text-align:center;font-weight:700;font-size:.95rem;padding:8px 10px;box-shadow:0 2px 6px rgba(0,0,0,.15)';
+    document.body.insertBefore(bar,document.body.firstChild);}
+  const paint=()=>{
+    if(License.activated()){drawTrialBar();return}
+    const ms=License.msLeft();
+    if(ms<=0){if(_lcTick){clearInterval(_lcTick);_lcTick=null}bar.remove();S.mode='trial_locked';$('#view').innerHTML='';render();return}
+    bar.innerHTML='نسخة تجريبية — المتبقي <span dir="ltr" style="font-variant-numeric:tabular-nums">'+fmtLeft(ms)+'</span> (ساعة:دقيقة:ثانية)';
+  };
+  paint();
+  if(!_lcTick)_lcTick=setInterval(paint,1000);
 }
 
 /* ---------- البدء ---------- */
@@ -974,7 +992,7 @@ render();
   try{await loadBase()}catch(e){console.error(e)}
   License.tick();
   S.mode=License.locked()?'trial_locked':(hasLock()?'locked':'ready');
-  setSync();render();drawCredit();
+  setSync();render();drawCredit();drawTrialBar();
 })();
 </script>
 </body>
